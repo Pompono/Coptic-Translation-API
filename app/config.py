@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     e2c_revision: str = "main"
     max_input_chars: int = Field(default=1200, ge=1, le=10_000)
     rate_limit: str = "30/minute"
+    inference_queue_limit: int = Field(default=8, ge=0, le=10_000)
+    inference_queue_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     cache_entries: int = Field(default=1000, ge=1, le=100_000)
     cache_ttl_seconds: int = Field(default=3600, ge=1, le=86_400)
     generation_max_new_tokens: int = Field(default=64, ge=1, le=512)

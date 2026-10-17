@@ -10,6 +10,7 @@ services:
       HF_HOME: /models
       HUGGINGFACE_HUB_CACHE: /models/hub
       TRANSFORMERS_CACHE: /models/hub
+      FORWARDED_ALLOW_IPS: ${COPTIC_FORWARDED_ALLOW_IPS:-127.0.0.1}
     volumes:
       - hf-cache:/models
     ports:
@@ -22,7 +23,8 @@ services:
     cap_drop:
       - ALL
     pids_limit: 128
-    mem_limit: 4g
+    # Provisional until RSS is measured on the deployment host; override in .env.
+    mem_limit: ${COPTIC_MEMORY_LIMIT:-4g}
     cpus: 2.0
 
 volumes:

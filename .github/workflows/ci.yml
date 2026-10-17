@@ -19,8 +19,20 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
       - run: pip install -r requirements-dev.txt
-      - run: pytest -q
+      - run: python -m pytest -q
       - run: ruff check app tests scripts
+
+  model-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+      - run: pip install -r requirements.txt
+      - name: Download models and translate in both directions
+        run: python scripts/smoke_models.py
 
   docker-build:
     runs-on: ubuntu-latest

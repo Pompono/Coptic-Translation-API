@@ -100,8 +100,8 @@ class TranslationModels:
     @staticmethod
     def _prepared_english(text: str, dialect: str) -> ProcessedInput:
         normalized = text.strip().lower()
-        if dialect == "sahidic":
-            normalized = f"{SAHIDIC_TAG} {normalized}"
+        tag = BOHAIRIC_TAG if dialect == "bohairic" else SAHIDIC_TAG
+        normalized = f"{tag} {normalized}"
         return ProcessedInput(dialect, normalized)
 
     def translate(self, text: str, direction: str, dialect: str | None = None,

@@ -172,7 +172,9 @@ def build_app(settings: Settings | None = None, model_loader: Callable | None = 
     app.state.ready = False
     app.state.model_load_seconds = None
     app.state.cache = TTLCache(maxsize=config.cache_entries, ttl=config.cache_ttl_seconds)
-    app.state.inference_lock = asyncio.Semaphore(1)
+    app.state.inference_lock = asyncio.Lock()
+    app.state.inference_waiting = 0
+    app.state.inference_queue_lock = asyncio.Lock()
     app.add_middleware(RequestSizeLimitMiddleware)
     app.add_middleware(RateLimitMiddleware, rate=config.rate_limit)
     app.add_middleware(
@@ -251,7 +253,36 @@ def build_app(settings: Settings | None = None, model_loader: Callable | None = 
             result["cached"] = True
             return result
 
-        async with request.app.state.inference_lock:
+        inference_lock = request.app.state.inference_lock
+        queue_lock = request.app.state.inference_queue_lock
+        queued = False
+        acquired = False
+        async with queue_lock:
+            if inference_lock.locked():
+                if request.app.state.inference_waiting >= config.inference_queue_limit:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Translation queue is full. Retry shortly.",
+                        headers={"Retry-After": "5"},
+                    )
+                request.app.state.inference_waiting += 1
+                queued = True
+            else:
+                # Lock acquisition is immediate while still under queue_lock.
+                await inference_lock.acquire()
+                acquired = True
+
+        try:
+            if queued:
+                await asyncio.wait_for(
+                    inference_lock.acquire(),
+                    timeout=config.inference_queue_timeout_seconds,
+                )
+                acquired = True
+                async with queue_lock:
+                    request.app.state.inference_waiting -= 1
+                queued = False
+
             # A concurrent request may have populated the cache while this one waited.
             cached = request.app.state.cache.get(cache_key)
             if cached:
@@ -274,6 +305,18 @@ def build_app(settings: Settings | None = None, model_loader: Callable | None = 
             request.app.state.cache[cache_key] = dict(result)
             result["cached"] = False
             return result
+        except TimeoutError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Timed out waiting for translation capacity.",
+                headers={"Retry-After": "5"},
+            ) from exc
+        finally:
+            if queued:
+                async with queue_lock:
+                    request.app.state.inference_waiting -= 1
+            if acquired:
+                inference_lock.release()
 
     @app.post("/v1/translate", tags=["translation"])
     async def translate(payload: TranslationRequest, request: Request, _auth: None = Depends(authenticate)):

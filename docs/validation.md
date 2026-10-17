@@ -3,26 +3,36 @@
 This record distinguishes local checks from checks that require the deployment
 host or model download. Update the measured values for each release candidate.
 
-## Local change validation
+## Validation environment and CI
 
-Validated on Windows with Python 3.11.9:
+The local Windows environment has Python 3.11.9, but does not have Docker or
+the project dependencies installed. Installing dependencies from PyPI failed
+because DNS/network access to PyPI is unavailable. Therefore no local pytest,
+Ruff, Docker build, Hugging Face download, or model-backed translation result
+is claimed here. `python -m compileall -q app tests scripts` and `git diff
+--check` passed locally.
 
-- `python -m pytest -q`: **8 passed**. API tests inject a deterministic fake
-  translator; they verify routes, direction defaults, caching, API key checks,
-  streamed and character input limits, response headers, weak-key rejection,
-  and rate limiting without downloading weights.
-- `python -m ruff check app tests scripts`: **passed**.
-- `python -m compileall -q app tests scripts`: **passed**.
-- Docker image build: **not run**, because Docker is not installed on the local
-  machine. CI is configured to build the image on Ubuntu.
+The first GitHub Actions run for PR #1 failed as expected from two detected
+problems: Docker tried to install `requirements.txt` before copying it, and the
+`pytest` console-script invocation failed to import the `app` package during
+collection. The PR changes copy the manifest before pip install and invoke
+tests as `python -m pytest`. CI also now runs a real Hugging Face model smoke
+job that downloads both public models, starts the API lifespan, and requests
+one translation in each direction. Record the resulting run URL, exact pass or
+failure status, and smoke metrics here after that run completes.
 
 ## Translation benchmark
 
-No numeric translation benchmark is recorded in source control because the
-actual Hugging Face models have not been provisioned in this environment. Use
-`python scripts/benchmark.py` and save the emitted JSON under an external
-deployment record or an ignored `benchmark-results/` folder. The script
-measures actual model-backed API requests; it does not use fake models.
+The Actions smoke job reports actual model download/startup duration, process
+peak RSS through model load and one request in each direction, device, and
+sample outputs. This is a smoke check on a shared GitHub-hosted runner, not a
+representative EC2 capacity benchmark or translation-quality evaluation. Use
+`python scripts/benchmark.py` against the actual container on the selected
+Linux/EC2 host; record cold-start time and container peak RSS from cgroup or
+`docker stats`, then run repeated warm and expected-concurrency measurements.
+Do not treat the Compose 4 GiB limit as validated until those measurements
+complete. Set `COPTIC_MEMORY_LIMIT` to the measured peak plus suitable OS and
+load headroom.
 
 ## Known limits
 
@@ -37,6 +47,12 @@ measures actual model-backed API requests; it does not use fake models.
   PyTorch build and host/container driver setup.
 - The cache and rate limiter are in-memory and per process. This setup is aimed
   at one process and one host behind a trusted proxy.
+- Public Next.js clients cannot safely hold a shared backend API key. Use a
+  server-side Next.js route/proxy, keep the key in server-only environment
+  configuration, and apply per-user/IP abuse controls at that public edge.
+- Both selected Hugging Face model cards currently report AGPL-3.0. Obtain
+  legal review of the exact model revisions and hosted-service/source-offer
+  obligations before public production use.
 - HTTPS termination, authentication secret provisioning, firewall rules,
   backups of the model cache, and EC2 cost controls belong to the operator's
   infrastructure configuration.

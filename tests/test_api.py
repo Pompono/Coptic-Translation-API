@@ -112,6 +112,33 @@ def test_streamed_oversized_body_is_rejected_and_short_api_key_fails_closed():
         build_app(Settings(_env_file=None, api_key="too-short"))
 
 
+def test_full_inference_queue_rejects_new_requests_without_building_an_unbounded_wait():
+    async def scenario():
+        settings = Settings(_env_file=None, inference_queue_limit=0)
+
+        async def delayed(function, *args):
+            await asyncio.sleep(0.15)
+            return function(*args)
+
+        models = FakeModels()
+        app = build_app(settings, model_loader=lambda *args: models, run_in_thread=delayed)
+        async with app.router.lifespan_context(app):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                first = asyncio.create_task(client.post("/v1/translate", json={
+                    "text": "amen", "direction": "english_to_coptic"
+                }))
+                await asyncio.sleep(0.02)
+                rejected = await client.post("/v1/translate", json={
+                    "text": "peace", "direction": "english_to_coptic"
+                })
+                completed = await first
+                assert completed.status_code == 200
+                assert rejected.status_code == 503
+                assert rejected.headers["Retry-After"] == "5"
+
+    asyncio.run(scenario())
+
+
 def test_compatibility_endpoints_and_security_headers():
     async def scenario():
         async with make_client() as (client, _):
