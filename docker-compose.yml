@@ -23,8 +23,9 @@ services:
     cap_drop:
       - ALL
     pids_limit: 128
-    # Provisional until RSS is measured on the deployment host; override in .env.
-    mem_limit: ${COPTIC_MEMORY_LIMIT:-4g}
+    # 2 GiB leaves headroom above the 1.04 GiB CI model-smoke process peak.
+    # Override in .env after measuring on the deployment host.
+    mem_limit: ${COPTIC_MEMORY_LIMIT:-2g}
     cpus: 2.0
 
 volumes:

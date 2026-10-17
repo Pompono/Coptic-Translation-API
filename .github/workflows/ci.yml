@@ -43,4 +43,13 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: coptic-translation-api:ci
+      - name: Check Compose configuration
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Check non-root model-cache volume permissions and app imports
+        run: >-
+          docker run --rm --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m
+          --mount type=volume,source=coptic-hf-cache,target=/models
+          --entrypoint python coptic-translation-api:ci -c
+          "import os; from pathlib import Path; import app.main; assert os.geteuid() == 10001; p = Path('/models/hub/.permission-check'); p.write_text('ok'); p.unlink()"

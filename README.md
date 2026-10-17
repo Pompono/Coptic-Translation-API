@@ -159,10 +159,11 @@ use.
 
 The container runs as an unprivileged user, has a read-only root filesystem,
 drops Linux capabilities, has a process limit, and includes a readiness
-healthcheck. Compose's `COPTIC_MEMORY_LIMIT` (default `4g`) is a configurable,
-unbenchmarked starting value, not a proven requirement or capacity guarantee.
-After the real-model smoke test, run repeated cold-start and warm-load tests on
-the target EC2 size while recording container peak RSS (for example with
+healthcheck. Compose's `COPTIC_MEMORY_LIMIT` (default `2g`) is configurable.
+That starting value is based on a 1.04 GiB peak process RSS in the CI
+real-model smoke test; it is not a measured container or EC2 peak and is not a
+capacity guarantee. Run repeated cold-start and warm-load tests on the target
+EC2 size while recording container peak RSS (for example with
 `docker stats` and cgroup memory metrics). Set the limit above observed peak
 RSS with operating headroom, then repeat under expected concurrency. Do not
 increase replicas/workers until measuring the multiplied model memory.
