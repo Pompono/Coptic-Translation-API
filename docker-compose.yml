@@ -1,0 +1,29 @@
+services:
+  coptic-api:
+    build: .
+    image: coptic-translation-api:local
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      HF_HOME: /models
+      HUGGINGFACE_HUB_CACHE: /models/hub
+      TRANSFORMERS_CACHE: /models/hub
+    volumes:
+      - hf-cache:/models
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 4g
+    cpus: 2.0
+
+volumes:
+  hf-cache:
