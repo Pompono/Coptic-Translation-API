@@ -52,4 +52,4 @@ jobs:
           docker run --rm --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m
           --mount type=volume,source=coptic-hf-cache,target=/models
           --entrypoint python coptic-translation-api:ci -c
-          "import os; from pathlib import Path; import app.main; assert os.geteuid() == 10001; p = Path('/models/hub/.permission-check'); p.write_text('ok'); p.unlink()"
+          "import os; from pathlib import Path; import app.main; assert os.geteuid() == 10001; p = Path('/models/hub/.permission-check'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text('ok'); p.unlink()"
