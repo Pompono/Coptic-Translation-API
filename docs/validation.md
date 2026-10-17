@@ -5,31 +5,33 @@ collected on the target Linux/EC2 host.
 
 ## CI and local checks
 
-GitHub Actions run for commit `9041d7a` completed successfully:
+GitHub Actions run for commit `56174ff` completed successfully:
 
-- [Workflow run 38994018251](https://github.com/Pompono/Coptic-Translation-API/actions/runs/38994018251): `tests`, `docker-build`, and `model-smoke` all passed.
+- [Workflow run 38994370166](https://github.com/Pompono/Coptic-Translation-API/actions/runs/38994370166): `tests`, `docker-build`, and `model-smoke` all passed.
 - Unit/API tests: **10 passed**; Ruff reported **All checks passed**.
 - Docker Buildx image build completed successfully.
+- Docker Compose configuration parsed successfully.
+- A built container with a read-only root filesystem ran as UID 10001, imported
+  the application, created `/models/hub` in a fresh named volume, and wrote and
+  removed a file there successfully.
 - The model smoke job downloaded both public Hugging Face models, started the
   API lifespan, and received successful HTTP translations in both directions.
-- CI Docker runtime checks for Compose parsing and non-root cache-volume write
-  permissions are included in the follow-up run after commit `9041d7a`.
 
-The first CI run failed because the Dockerfile installed requirements before
-copying the requirements file, and `pytest` invoked as a console script could
-not import the `app` package. The next run exposed missing smoke-job test
-dependencies and then a Python import path issue for the smoke script. These
-were corrected; the run linked above passed.
+The initial CI runs exposed the Dockerfile copy-order bug, `pytest` console
+script import behavior, missing smoke-job dependencies, and a smoke script
+import-path issue. A first Docker volume check also assumed `/models/hub`
+already existed on a fresh volume. Those issues were corrected; the latest
+workflow run linked above passed all jobs and runtime checks.
 
 The local Windows environment has Python 3.11.9, but does not have Docker or
 the project dependencies installed. Installing dependencies failed because
 DNS/network access to PyPI was unavailable. No local Docker build or runtime
-is claimed. Local `python -m compileall -q app tests scripts` and `git diff
---check` passed before the CI run.
+is claimed. Local `python -m compileall -q app tests scripts` and
+`git diff --check` passed.
 
 ## Real-model smoke measurements
 
-Run 38994018251 used the CPU GitHub-hosted Ubuntu runner with the current
+Run 38994370166 used the CPU GitHub-hosted Ubuntu runner with the current
 `main` revisions of:
 
 - `megalaa/coptic-english-translator`
