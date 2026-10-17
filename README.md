@@ -26,10 +26,14 @@ long passages. Check translations with a qualified reader before relying on
 them. The optional confidence value follows the reference translator's
 token-probability heuristic and is **not calibrated** as a measure of accuracy.
 
-The Hugging Face model cards identify the weights as AGPL-3.0 licensed. Review
-the current model licenses and obligations before offering a hosted service or
-redistributing converted weights. This repository does not redistribute those
-weights.
+Both Hugging Face model cards identify the weights as AGPL-3.0 licensed:
+[Coptic → English](https://huggingface.co/megalaa/coptic-english-translator)
+and [English → Coptic](https://huggingface.co/megalaa/english-coptic-translator).
+Review the license text and obligations for the exact model revisions and your
+distribution and hosted-service design before public production use. In
+particular, have counsel assess AGPL-3.0 network-use/source-offer requirements
+for the model and any modifications. The repository does not redistribute the
+weights; CI downloads them from Hugging Face at test time.
 
 ## API
 
@@ -98,19 +102,55 @@ curl http://127.0.0.1:8000/health/ready
 The port binds to `127.0.0.1` by default. Put an HTTPS reverse proxy such as
 Caddy, Nginx, or an AWS ALB in front of it. Configure the proxy to forward
 `X-Forwarded-For` only from trusted addresses. The container trusts forwarded
-headers from loopback only; adjust Uvicorn's `--forwarded-allow-ips` command
-only to match the proxy addresses on your host. Do not expose the container port
-directly to the public internet. Set `COPTIC_API_KEY` to at least 32 characters
+headers from loopback only by default. Set `COPTIC_FORWARDED_ALLOW_IPS` to the
+exact reverse-proxy source IPs/networks when needed, and configure that proxy to
+overwrite untrusted `X-Forwarded-For` values. Never trust `*` on a public server.
+Do not expose the container port directly to the public internet. Set
+`COPTIC_API_KEY` to at least 32 characters
 and require the `X-API-Key` header for the translation API. Set
 `COPTIC_ALLOWED_ORIGINS` to an
 exact comma-separated allowlist only if browser clients need cross-origin
 access. CORS is disabled by default.
 
+### Public Next.js website authentication
+
+Do not put `COPTIC_API_KEY` in browser JavaScript, a `NEXT_PUBLIC_*` variable,
+or a static site's client bundle. Browsers cannot keep a shared secret. Deploy
+the Next.js app with a server runtime and proxy translation through a Route
+Handler (or another trusted server endpoint):
+
+```ts
+// app/api/translate/route.ts (server-side only)
+export async function POST(request: Request) {
+  const payload = await request.json();
+  const upstream = await fetch(`${process.env.COPTIC_API_URL}/v1/translate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": process.env.COPTIC_API_KEY!,
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { "Content-Type": upstream.headers.get("content-type") ?? "application/json" },
+  });
+}
+```
+
+Configure `COPTIC_API_KEY` and `COPTIC_API_URL` as server-only environment
+secrets in the Next.js hosting platform. Keep the API private to the proxy when
+possible. Authenticate/rate-limit website users at the Next.js edge or gateway:
+the backend sees a shared proxy address, so its per-client-IP limiter cannot
+distinguish those users. CORS only controls browser cross-origin behavior; it
+does not protect the endpoint or replace authentication and abuse controls.
+
 For AWS EC2, use a current Ubuntu LTS or Amazon Linux image, install Docker and
 Compose from the official distribution packages, allow inbound HTTPS only at
-the security group, and keep port 8000 private to the instance/proxy. Use an
-instance with at least 4 GiB RAM for CPU inference and persistent EBS-backed
-storage for the Compose `hf-cache` volume. First start needs outbound HTTPS to
+the security group, and keep port 8000 private to the instance/proxy. Provision
+RAM and persistent EBS-backed storage for the Compose `hf-cache` volume based
+on measurements on the selected instance. First start needs outbound HTTPS to
 Hugging Face to download weights. For a GPU, use a CUDA-enabled host and an
 NVIDIA Container Toolkit image/build instead of the CPU-only Dockerfile; GPU
 runtime setup depends on the selected EC2 AMI and driver. Keep one API worker
@@ -119,11 +159,25 @@ use.
 
 The container runs as an unprivileged user, has a read-only root filesystem,
 drops Linux capabilities, has a process limit, and includes a readiness
-healthcheck. The Compose CPU and memory values are starter settings; tune them
-from measurements on the selected host. API key comparison is constant-time.
-The built-in request rate limit and translation cache are process-local. They
-reset on restart and are not shared across multiple replicas. Use an ingress
-rate limit or Redis-backed limiter when scaling beyond one process.
+healthcheck. Compose's `COPTIC_MEMORY_LIMIT` (default `2g`) is configurable.
+That starting value is based on a 1.04 GiB peak process RSS in the CI
+real-model smoke test; it is not a measured container or EC2 peak and is not a
+capacity guarantee. Run repeated cold-start and warm-load tests on the target
+EC2 size while recording container peak RSS (for example with
+`docker stats` and cgroup memory metrics). Set the limit above observed peak
+RSS with operating headroom, then repeat under expected concurrency. Do not
+increase replicas/workers until measuring the multiplied model memory.
+
+Inference runs one model call at a time per process. The waiting queue is
+bounded by `COPTIC_INFERENCE_QUEUE_LIMIT` (default 8) and
+`COPTIC_INFERENCE_QUEUE_TIMEOUT_SECONDS` (default 30); a full or timed-out queue
+returns HTTP 503 with `Retry-After`. The default `COPTIC_RATE_LIMIT=30/minute`
+is a per-process, per-observed-client-address limit on translation POST routes.
+It is not a distributed quota, and behind a shared Next.js proxy it aggregates
+all users under the proxy address. Enforce per-user/IP limits at the public
+edge; use a shared limiter such as Redis if there are multiple backend
+replicas. API key comparison is constant-time. The response cache and limiter
+are process-local and reset on restart.
 
 ## Run locally
 
